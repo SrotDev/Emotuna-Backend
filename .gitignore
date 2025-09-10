@@ -1,0 +1,24 @@
+# Ignore Python virtual environment
+.venv/
+
+# Ignore environment variable files
+.env
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Django migrations
+# */migrations/*
+# !*/migrations/__init__.py
+
+# Other common ignores
+*.sqlite3
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+
+# VS Code settings
+.vscode/

@@ -1,0 +1,90 @@
+import os
+import django
+import sys
+from dotenv import load_dotenv
+from ingestion.tidb_vector_utils import TiDBVectorDB
+from sentence_transformers import SentenceTransformer
+import numpy as np
+from openai import OpenAI
+
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'emotuna.settings')
+django.setup()
+load_dotenv()
+
+
+# Load the same model used for embedding
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+
+# Kimi API key and base URL from .env
+KIMI_KEY = os.getenv('KIMI_KEY')
+KIMI_BASE_URL = 'https://api.moonshot.ai/v1'
+KIMI_MODEL = 'kimi-k2-0905-preview'
+
+client = OpenAI(
+    api_key=KIMI_KEY,
+    base_url=KIMI_BASE_URL,
+)
+
+
+def cosine_similarity(a, b):
+    a = a / np.linalg.norm(a)
+    b = b / np.linalg.norm(b)
+    return np.dot(a, b)
+
+def find_similar_messages(query, top_n=3):
+    db = TiDBVectorDB()
+    db.create_table()
+    query_emb = model.encode(query, show_progress_bar=False, convert_to_numpy=True).astype(np.float32)
+    with db.conn.cursor() as cursor:
+        cursor.execute('SELECT id, message, embedding, reply_message FROM message_embeddings')
+        rows = cursor.fetchall()
+    similarities = []
+    for row in rows:
+        msg_id, msg_text, emb_bytes, reply_text = row
+        if emb_bytes is None:
+            continue
+        emb = np.frombuffer(emb_bytes, dtype=np.float32)
+        sim = cosine_similarity(query_emb, emb)
+        similarities.append((sim, msg_text, reply_text))
+    similarities.sort(reverse=True, key=lambda x: x[0])
+    db.close()
+    return similarities[:top_n]
+
+def call_kimi_api(prompt):
+    system_prompt = (
+        "You are Kimi, an AI assistant provided by Moonshot AI. "
+        "You are proficient in Chinese and English conversations. "
+        "You provide users with safe, helpful, and accurate answers. "
+        "You will reject any questions involving terrorism, racism, or explicit content. "
+        "Moonshot AI is a proper noun and should not be translated."
+    )
+    completion = client.chat.completions.create(
+        model=KIMI_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.6,
+    )
+    return completion.choices[0].message.content
+
+def agent_generate_reply(new_message):
+    similar = find_similar_messages(new_message, top_n=3)
+    context = ""
+    for sim, msg, reply in similar:
+        context += f"Past message: {msg}\nUser reply: {reply}\n"
+    prompt = f"{context}\nNew message: {new_message}\nReply in the user's style:"
+    ai_reply = call_kimi_api(prompt)
+    return ai_reply
+
+def main():
+    new_message = input('Enter a new message: ')
+    reply = agent_generate_reply(new_message)
+    print('\nAI-generated reply:')
+    print(reply)
+
+if __name__ == "__main__":
+    main()
