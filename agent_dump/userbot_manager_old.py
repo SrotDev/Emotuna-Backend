@@ -33,8 +33,30 @@ class TelegramUserBotManager:
         # self._setup_handlers()  # Handlers will be set after client is created
 
     def _select_model(self):
-        # Always use kimi model regardless of user choice
-        return agent_generate_reply
+        if self.model_choice == 'kimi':
+            return agent_generate_reply
+        else:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            # Use the actual dpo_model directory (no checkpoint subdir)
+            EXTRACT_DIR = os.path.join(self.BASE_DIR, 'dpo_model')
+            tokenizer = AutoTokenizer.from_pretrained(EXTRACT_DIR)
+            model = AutoModelForCausalLM.from_pretrained(EXTRACT_DIR)
+            def dpo_generate_reply(prompt: str, max_new_tokens: int = 60) -> str:
+                inputs = tokenizer(prompt, return_tensors="pt")
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    repetition_penalty=1.2,
+                    eos_token_id=tokenizer.eos_token_id if tokenizer.eos_token_id else None,
+                )
+                generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                if generated_text.startswith(prompt):
+                    response = generated_text[len(prompt):].strip()
+                else:
+                    response = generated_text.strip()
+                sentences = __import__('re').split(r'(?<=[.!?])\s+', response)
+                return ' '.join(sentences[:2]).strip()
+            return dpo_generate_reply
 
     def _setup_handlers(self):
         if self.handler_attached:
@@ -64,11 +86,16 @@ class TelegramUserBotManager:
                 if updated:
                     await sync_to_async(contact.save)()
                 # Generate reply (but do not send yet)
-                # Always use kimi model
-                if inspect.iscoroutinefunction(self.generate):
-                    ai_reply = await self.generate(user_message, self.username)
+                if self.model_choice == 'kimi':
+                    if inspect.iscoroutinefunction(self.generate):
+                        ai_reply = await self.generate(user_message, self.username)
+                    else:
+                        ai_reply = await asyncio.to_thread(self.generate, user_message, self.username)
                 else:
-                    ai_reply = await asyncio.to_thread(self.generate, user_message, self.username)
+                    if inspect.iscoroutinefunction(self.generate):
+                        ai_reply = await self.generate(user_message)
+                    else:
+                        ai_reply = await asyncio.to_thread(self.generate, user_message)
                 # Store message in DB, replied=False
                 chat_msg = await sync_to_async(ChatMessage.objects.create)(
                     user=self.user,
