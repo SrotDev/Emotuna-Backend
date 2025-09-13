@@ -14,7 +14,7 @@ django.setup()
 from django.contrib.auth.models import User
 from chat.models import Contact, ChatMessage
 from agent_dump.tidb_vector_utils import TiDBVectorDB
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 import requests
 
@@ -110,20 +110,27 @@ def classify_new_messages():
 
 # --- Embed ---
 def embed_new_messages():
-    model = SentenceTransformer('all-MiniLM-L6-v2')
     db = TiDBVectorDB()
     db.create_table()
-    messages = ChatMessage.objects.all()
+    messages = list(ChatMessage.objects.all())
+    texts = [msg.message for msg in messages if msg.message]
+    reply_texts = [msg.reply_message for msg in messages if msg.reply_message]
+    # Fit vectorizer on all messages and replies
+    vectorizer = TfidfVectorizer()
+    fit_corpus = texts + reply_texts if reply_texts else texts
+    if not fit_corpus:
+        print('No messages to embed.')
+        db.close()
+        return
+    vectorizer.fit(fit_corpus)
     for msg in messages:
-        emb = model.encode(msg.message, show_progress_bar=False, convert_to_numpy=True)
-        reply_emb = None
-        if msg.reply_message:
-            reply_emb = model.encode(msg.reply_message, show_progress_bar=False, convert_to_numpy=True)
+        emb = vectorizer.transform([msg.message]).toarray()[0] if msg.message else None
+        reply_emb = vectorizer.transform([msg.reply_message]).toarray()[0] if msg.reply_message else None
         db.insert_embedding(
             str(msg.id),
             msg.user_id,
             msg.message,
-            emb.astype(np.float32),
+            emb.astype(np.float32) if emb is not None else None,
             msg.reply_message,
             reply_emb.astype(np.float32) if reply_emb is not None else None
         )
