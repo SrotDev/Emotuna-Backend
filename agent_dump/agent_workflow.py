@@ -2,17 +2,17 @@ import os
 import django
 import sys
 from dotenv import load_dotenv
-from ingestion.tidb_vector_utils import TiDBVectorDB
-from sentence_transformers import SentenceTransformer
-import numpy as np
-from openai import OpenAI
-
+load_dotenv()
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'emotuna.settings')
 django.setup()
-load_dotenv()
 
+from agent_dump.tidb_vector_utils import TiDBVectorDB
+from sentence_transformers import SentenceTransformer
+import numpy as np
+
+from openai import OpenAI
 
 # Load the same model used for embedding
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -34,18 +34,20 @@ def cosine_similarity(a, b):
     b = b / np.linalg.norm(b)
     return np.dot(a, b)
 
-def find_similar_messages(query, top_n=3):
+def find_similar_messages(query, username, top_n=3):
+    # Use user-specific DB or table if needed, or filter by user_id
     db = TiDBVectorDB()
     db.create_table()
     query_emb = model.encode(query, show_progress_bar=False, convert_to_numpy=True).astype(np.float32)
     with db.conn.cursor() as cursor:
-        cursor.execute('SELECT id, message, embedding, reply_message FROM message_embeddings')
+        cursor.execute('SELECT id, user_id, message, embedding, reply_message FROM message_embeddings')
         rows = cursor.fetchall()
     similarities = []
     for row in rows:
-        msg_id, msg_text, emb_bytes, reply_text = row
+        msg_id, user_id, msg_text, emb_bytes, reply_text = row
         if emb_bytes is None:
             continue
+        # Optionally filter by user_id if you want strict per-user retrieval
         emb = np.frombuffer(emb_bytes, dtype=np.float32)
         sim = cosine_similarity(query_emb, emb)
         similarities.append((sim, msg_text, reply_text))
@@ -71,8 +73,8 @@ def call_kimi_api(prompt):
     )
     return completion.choices[0].message.content
 
-def agent_generate_reply(new_message):
-    similar = find_similar_messages(new_message, top_n=3)
+def agent_generate_reply(new_message, username):
+    similar = find_similar_messages(new_message, username, top_n=3)
     context = ""
     for sim, msg, reply in similar:
         context += f"Past message: {msg}\nUser reply: {reply}\n"
@@ -81,8 +83,9 @@ def agent_generate_reply(new_message):
     return ai_reply
 
 def main():
+    username = input('Enter username: ')
     new_message = input('Enter a new message: ')
-    reply = agent_generate_reply(new_message)
+    reply = agent_generate_reply(new_message, username)
     print('\nAI-generated reply:')
     print(reply)
 

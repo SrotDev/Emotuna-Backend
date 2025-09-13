@@ -1,0 +1,18 @@
+id,timestamp,message,platform,emotion,sentiment,is_toxic,telegram_chat_id,telegram_message_id,is_important,is_nsfw,user_approved_reply,reply_sent,score,ai_generated_message,reply_message,user,contact
+1,2025-09-09 15:00:00,Did you eat lunch?,imported,,,false,,,false,false,true,true,,,Yes, I just finished eating!,2,Mom
+2,2025-09-09 15:05:00,You are so annoying!,imported,,,false,,,false,false,true,true,,,Sorry, didn’t mean to bother you.,2,Friend
+3,2025-09-09 15:10:00,Please submit the report by EOD.,imported,,,false,,,false,false,true,true,,,Sure, I’ll send it before 5 PM.,2,Boss
+4,2025-09-09 15:15:00,Check out this TikTok 😂,imported,,,false,,,false,false,true,true,,,LOL that’s hilarious!,2,Friend
+5,2025-09-09 15:20:00,You are ugly and stupid.,imported,,,false,,,false,false,true,true,,,Please don’t send me such messages.,2,Stranger
+6,2025-09-09 15:25:00,Let’s play later!,imported,,,false,,,false,false,true,true,,,Sounds good, text me when you’re free.,2,Friend
+7,2025-09-09 15:30:00,Your work is not up to the mark.,imported,,,false,,,false,false,true,true,,,Thanks for the feedback, I’ll improve.,2,Boss
+8,2025-09-09 15:35:00,Hey, are you coming to the party?,imported,,,false,,,false,false,true,true,,,Yes! I’ll be there at 8.,2,Friend
+9,2025-09-09 15:40:00,You did a great job!,imported,,,false,,,false,false,true,true,,,Thank you so much!,2,Friend
+10,2025-09-09 15:45:00,Send me the notes plz.,imported,,,false,,,false,false,true,true,,,Sure, sending them now.,2,Friend
+11,2025-09-11 11:27:18,how are you?,imported,,,false,,,false,false,true,true,,,I am fine. Thank you. how are you?,1,Ahammad
+12,2025-09-11 11:32:13,how are you?,imported,,,false,,,false,false,true,true,,,i am fine. thanks for asking. how are you?,2,Ahammad
+13,2025-09-11 11:35:05,how are you?,imported,,,false,,,false,false,true,true,,,I'm doing okay, thanks for asking!,2,Ahammad
+14,2025-09-11 20:28:24,hey man!,imported,,,false,,,false,false,true,true,,,hello there,2,Ahammad
+15,2025-09-11 20:59:03,Hello,imported,,,false,,,false,false,true,true,,,hey hey! not much—just vibing. what’s good with you?,2,Ahammad
+16,2025-09-11 21:22:04,Hey,imported,,,false,,,false,false,true,true,,,hello,2,Ahammad
+17,2025-09-11 21:29:05,Are you free right now?,imported,,,false,,,false,false,true,true,,,yep, i’m free! what’s up?,2,Ahammad

@@ -22,3 +22,6 @@ __pycache__/
 
 # VS Code settings
 .vscode/
+
+# Ignore ingestion directory and all its contents
+ingestion/
