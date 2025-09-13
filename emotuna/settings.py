@@ -93,7 +93,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'emotuna.wsgi.application'
 CORS_ALLOW_ALL_ORIGINS = True
-
+CSRF_TRUSTED_ORIGINS = [
+    "https://emotuna-backend-production.up.railway.app"
+]
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
