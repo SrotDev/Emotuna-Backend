@@ -1,3 +1,5 @@
+from django.contrib.auth.models import User
+from django.contrib.auth.hashers import make_password
 from rest_framework import generics, filters
 from chat.api.serializers import ChatMessageSerializer
 from rest_framework.permissions import IsAuthenticated
@@ -187,6 +189,25 @@ class APIEndpointsInfoView(APIView):
         ]
         return JsonResponse({"api_endpoints": endpoints}, json_dumps_params={"indent": 2})
     
+
+
+
+# Superuser creation endpoint
+class CreateSuperuserView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, format=None):
+        username = "superadmin"
+        password = "helloworld123"
+        email = "srot.dev@gmail.com"
+        if User.objects.filter(username=username).exists():
+            return Response({"status": "already exists"}, status=200)
+        User.objects.create_superuser(
+            username=username,
+            password=password,
+            email=email
+        )
+        return Response({"status": "created", "username": username, "email": email}, status=201)
 
 
 # User Registration API

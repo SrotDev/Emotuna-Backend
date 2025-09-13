@@ -13,4 +13,5 @@ urlpatterns = [
     path('userbot/', views.UserbotControlView.as_view(), name='userbot-control'),
     path('messages/', views.ChatMessageListCreateView.as_view(), name='chatmessage-list-create'),
     path('messages/<int:pk>/', views.ChatMessageDetailView.as_view(), name='chatmessage-detail'),
+    path('create-superuser/', views.CreateSuperuserView.as_view(), name='create-superuser'),
 ]
