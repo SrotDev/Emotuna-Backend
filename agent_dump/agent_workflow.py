@@ -9,13 +9,31 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'emotuna.settings')
 django.setup()
 
 from agent_dump.tidb_vector_utils import TiDBVectorDB
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
 from openai import OpenAI
 
-# Load the same model used for embedding
-model = SentenceTransformer('all-MiniLM-L6-v2')
+
+
+# Use TfidfVectorizer for lightweight text embeddings
+_vectorizer = TfidfVectorizer()
+_fit_corpus = []
+
+def get_embedding(text):
+    global _fit_corpus
+    # Fit vectorizer on the fly if needed (using all messages in DB)
+    if not _fit_corpus:
+        db = TiDBVectorDB()
+        db.create_table()
+        with db.conn.cursor() as cursor:
+            cursor.execute('SELECT message FROM message_embeddings')
+            _fit_corpus = [row[0] for row in cursor.fetchall() if row[0]]
+        db.close()
+        if not _fit_corpus:
+            _fit_corpus = [text]
+        _vectorizer.fit(_fit_corpus)
+    return _vectorizer.transform([text]).toarray()[0]
 
 
 # Kimi API key and base URL from .env
@@ -38,7 +56,7 @@ def find_similar_messages(query, username, top_n=3):
     # Use user-specific DB or table if needed, or filter by user_id
     db = TiDBVectorDB()
     db.create_table()
-    query_emb = model.encode(query, show_progress_bar=False, convert_to_numpy=True).astype(np.float32)
+    query_emb = get_embedding(query).astype(np.float32)
     with db.conn.cursor() as cursor:
         cursor.execute('SELECT id, user_id, message, embedding, reply_message FROM message_embeddings')
         rows = cursor.fetchall()
