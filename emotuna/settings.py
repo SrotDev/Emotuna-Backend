@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'chat',
+    'corsheaders',
 ]
 
 REST_FRAMEWORK = {
@@ -70,6 +71,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'emotuna.urls'
@@ -90,6 +92,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'emotuna.wsgi.application'
+CORS_ALLOW_ALL_ORIGINS = True
 
 
 # Database
