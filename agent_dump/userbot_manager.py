@@ -108,66 +108,68 @@ class TelegramUserBotManager:
 
         def _run():
             print(f"[UserBotManager] Thread started for {self.user.username}")
-            asyncio.run(self._start_with_pin_handling())
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.loop.run_until_complete(self._start_with_pin_handling())
         t = threading.Thread(target=_run, daemon=True)
         t.start()
         self.thread = t
 
     async def _start_with_pin_handling(self):
+        from telethon.errors import SessionPasswordNeededError
         telegram_obj = await sync_to_async(Telegram.objects.get)(user=self.user)
         print(f"[UserBotManager] _start_with_pin_handling for {self.user.username}")
-        # Create TelegramClient in this thread/event loop
         self.client = TelegramClient(self.session_name, self.api_id, self.api_hash)
-        self._setup_handlers()  # Now safe to set handlers (will only attach once)
-        # Try to connect and handle PIN if needed
+        self._setup_handlers()
         try:
             await self.client.connect()
             print(f"[UserBotManager] Connected to Telegram for {self.user.username}")
             if not await self.client.is_user_authorized():
                 print(f"[UserBotManager] Not authorized, starting authentication for {self.user.username}")
-                # Start authentication
                 phone = telegram_obj.telegram_mobile_number
                 await self.client.send_code_request(phone)
                 print(f"[UserBotManager] Code request sent to {phone}")
-                # Check if PIN is required (2FA enabled)
-                if telegram_obj.telegram_pin_code:
-                    print(f"[UserBotManager] PIN already provided for {self.user.username}, trying to sign in")
-                    # PIN already provided, try to sign in
-                    try:
-                        await self.client.sign_in(phone, telegram_obj.telegram_pin_code)
-                        telegram_obj.pin_required = False
-                        await sync_to_async(telegram_obj.save)()
-                        print(f"[UserBotManager] Signed in successfully with PIN for {self.user.username}")
-                    except Exception as e:
-                        print(f"[UserBotManager] PIN incorrect or expired for {self.user.username}: {e}")
-                        telegram_obj.pin_required = True
-                        await sync_to_async(telegram_obj.save)()
-                        return  # Wait for frontend to provide new PIN
-                else:
-                    print(f"[UserBotManager] PIN not provided for {self.user.username}, setting pin_required and waiting")
-                    # PIN not provided, set pin_required and wait
+                # Set pin_required True and wait for login code from frontend
+                telegram_obj.pin_required = True
+                await sync_to_async(telegram_obj.save)()
+                # Wait for frontend to provide login code (poll DB)
+                while telegram_obj.pin_required:
+                    print(f"[UserBotManager] Waiting for login code for {self.user.username}...")
+                    await asyncio.sleep(2)
+                    await sync_to_async(telegram_obj.refresh_from_db)()
+                print(f"[UserBotManager] Login code received for {self.user.username}, trying to sign in with code")
+                try:
+                    # sign_in with code (telegram_obj.telegram_pin_code used for login code)
+                    await self.client.sign_in(phone, telegram_obj.telegram_pin_code)
+                    telegram_obj.pin_required = False
+                    await sync_to_async(telegram_obj.save)()
+                    print(f"[UserBotManager] Signed in with login code for {self.user.username}")
+                except SessionPasswordNeededError:
+                    print(f"[UserBotManager] 2FA PIN required for {self.user.username}, waiting for frontend to provide PIN")
                     telegram_obj.pin_required = True
                     await sync_to_async(telegram_obj.save)()
-                    # Wait for frontend to provide PIN (poll DB)
+                    # Wait for frontend to provide 2FA PIN (poll DB)
                     while telegram_obj.pin_required:
-                        print(f"[UserBotManager] Waiting for PIN for {self.user.username}...")
+                        print(f"[UserBotManager] Waiting for 2FA PIN for {self.user.username}...")
                         await asyncio.sleep(2)
                         await sync_to_async(telegram_obj.refresh_from_db)()
-                    print(f"[UserBotManager] PIN received for {self.user.username}, trying to sign in")
-                    # Try to sign in again with new PIN
+                    print(f"[UserBotManager] 2FA PIN received for {self.user.username}, trying to sign in with PIN")
                     try:
                         await self.client.sign_in(phone, telegram_obj.telegram_pin_code)
                         telegram_obj.pin_required = False
                         await sync_to_async(telegram_obj.save)()
-                        print(f"[UserBotManager] Signed in successfully after PIN for {self.user.username}")
+                        print(f"[UserBotManager] Signed in successfully after 2FA PIN for {self.user.username}")
                     except Exception as e:
-                        print(f"[UserBotManager] PIN incorrect after waiting for {self.user.username}: {e}")
+                        print(f"[UserBotManager] 2FA PIN incorrect after waiting for {self.user.username}: {e}")
                         telegram_obj.pin_required = True
                         await sync_to_async(telegram_obj.save)()
                         return
+                except Exception as e:
+                    print(f"[UserBotManager] Exception during sign_in for {self.user.username}: {e}")
+                    # Do NOT set pin_required for generic errors (e.g., invalid api_id/api_hash)
+                    return
             else:
                 print(f"[UserBotManager] Already authorized for {self.user.username}")
-            # If authorized, start background reply sender
             print(f"[UserBotManager] Starting background reply sender for {self.user.username}")
             await self._background_reply_sender()
         except Exception as e:
@@ -235,15 +237,14 @@ class TelegramUserBotManager:
     def stop(self):
         print(f"[UserBotManager] Stopping userbot for {self.user.username}")
         if self.running:
-            try:
-                loop = asyncio.get_running_loop()
-                coro = self.client.disconnect()
-                if asyncio.iscoroutine(coro):
-                    asyncio.create_task(coro)
-                else:
-                    coro
-            except RuntimeError:
-                # No running loop, so create one
-                asyncio.run(self.client.disconnect())
             self.running = False
+            if hasattr(self, 'loop') and self.loop and self.client:
+                def _disconnect():
+                    coro_or_future = self.client.disconnect()
+                    if asyncio.iscoroutine(coro_or_future):
+                        asyncio.create_task(coro_or_future)
+                    else:
+                        # It's a Future, so just add a done callback or ignore
+                        pass
+                self.loop.call_soon_threadsafe(_disconnect)
             print(f"[UserBotManager] Userbot stopped for {self.user.username}")

@@ -48,8 +48,12 @@ client = OpenAI(
 
 
 def cosine_similarity(a, b):
-    a = a / np.linalg.norm(a)
-    b = b / np.linalg.norm(b)
+    # Ensure both vectors are the same shape
+    min_len = min(a.shape[0], b.shape[0])
+    a = a[:min_len]
+    b = b[:min_len]
+    a = a / (np.linalg.norm(a) + 1e-8)
+    b = b / (np.linalg.norm(b) + 1e-8)
     return np.dot(a, b)
 
 def find_similar_messages(query, username, top_n=3):
@@ -58,15 +62,15 @@ def find_similar_messages(query, username, top_n=3):
     db.create_table()
     query_emb = get_embedding(query).astype(np.float32)
     with db.conn.cursor() as cursor:
-        cursor.execute('SELECT id, user_id, message, embedding, reply_message FROM message_embeddings')
+        cursor.execute('SELECT id, user_id, message, embedding, embedding_shape, reply_message FROM message_embeddings')
         rows = cursor.fetchall()
     similarities = []
     for row in rows:
-        msg_id, user_id, msg_text, emb_bytes, reply_text = row
-        if emb_bytes is None:
+        msg_id, user_id, msg_text, emb_bytes, emb_shape, reply_text = row
+        if emb_bytes is None or emb_shape is None:
             continue
+        emb = np.frombuffer(emb_bytes, dtype=np.float32)[:emb_shape]
         # Optionally filter by user_id if you want strict per-user retrieval
-        emb = np.frombuffer(emb_bytes, dtype=np.float32)
         sim = cosine_similarity(query_emb, emb)
         similarities.append((sim, msg_text, reply_text))
     similarities.sort(reverse=True, key=lambda x: x[0])
