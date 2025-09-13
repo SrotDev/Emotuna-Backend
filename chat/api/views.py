@@ -15,7 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from agent_dump.userbot_manager import TelegramUserBotManager
-import shutil
+import zipfile, shutil, subprocess
 
 class APIEndpointsInfoView(APIView):
     """
@@ -311,7 +311,6 @@ class DatasetUploadView(APIView):
 
 class ModelUnzipView(APIView):
     def post(self, request, format=None):
-        import zipfile, shutil
         user = getattr(request, 'user', None)
         username = None
         if user and user.is_authenticated:
@@ -334,6 +333,21 @@ class ModelUnzipView(APIView):
             os.remove(model_path)
         except Exception as e:
             print(f"Warning: Could not delete zip file {model_path}: {e}")
+
+        # --- AUTOMATE GIT ADD/COMMIT FOR SAFETENSORS ---
+        safetensor_path = os.path.join(extract_dir, 'model.safetensors')
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+        if os.path.exists(safetensor_path):
+            try:
+                # git add
+                subprocess.run(['git', 'add', safetensor_path], cwd=repo_root, check=True)
+                # git commit (only if there are staged changes)
+                result = subprocess.run(['git', 'diff', '--cached', '--name-only'], cwd=repo_root, capture_output=True, text=True)
+                if safetensor_path.replace('\\', '/').replace(repo_root.replace('\\', '/') + '/', '') in result.stdout or safetensor_path.replace('\\', '/') in result.stdout:
+                    subprocess.run(['git', 'commit', '-m', f'Update model.safetensors for {username}'], cwd=repo_root, check=True)
+            except Exception as e:
+                print(f"Warning: Could not git add/commit model.safetensors: {e}")
+
         return Response({'status': 'unzipped'}, status=200)
 
 
