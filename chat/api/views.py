@@ -1,3 +1,6 @@
+from rest_framework_simplejwt.tokens import RefreshToken, OutstandingToken, BlacklistedToken
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import make_password
 from rest_framework import generics, filters
@@ -27,130 +30,168 @@ class APIEndpointsInfoView(APIView):
 
     def get(self, request, format=None):
         endpoints = [
-            {
-                "path": "/api/register/",
-                "methods": ["POST"],
-                "description": "Register a new user.",
-                "sample_request": {
-                    "username": "alice",
-                    "password": "yourpassword",
-                    "email": "alice@example.com",
-                    "firstname": "Alice",
-                    "lastname": "Smith"
+                {
+                    "path": "/api/register/",
+                    "methods": ["POST"],
+                    "description": "Register a new user.",
+                    "sample_request": {
+                        "username": "alice",
+                        "password": "yourpassword",
+                        "email": "alice@example.com",
+                        "firstname": "Alice",
+                        "lastname": "Smith"
+                    },
+                    "sample_response": {
+                        "refresh": "<refresh_token>",
+                        "access": "<access_token>",
+                        "username": "alice",
+                        "email": "alice@example.com",
+                        "firstname": "Alice",
+                        "lastname": "Smith"
+                    }
                 },
-                "sample_response": {
-                    "refresh": "<refresh_token>",
-                    "access": "<access_token>",
-                    "username": "alice",
-                    "email": "alice@example.com",
-                    "firstname": "Alice",
-                    "lastname": "Smith"
-                }
-            },
-            {
-                "path": "/api/login/",
-                "methods": ["POST"],
-                "description": "Authenticate user and obtain JWT tokens.",
-                "sample_request": {
-                    "username": "alice",
-                    "password": "yourpassword"
+                {
+                    "path": "/api/logout/",
+                    "methods": ["POST"],
+                    "description": "Logout the current user, blacklist all JWT tokens, and stop the userbot if running.",
+                    "sample_request": {},
+                    "sample_response": {"status": "logged out"}
                 },
-                "sample_response": {
-                    "refresh": "<refresh_token>",
-                    "access": "<access_token>",
-                    "username": "alice",
-                    "email": "alice@example.com",
-                    "firstname": "Alice",
-                    "lastname": "Smith"
-                }
-            },
-            {
-                "path": "/api/dataset/",
-                "methods": ["POST", "GET"],
-                "description": "Upload or download the per-user SFT dataset (JSONL).",
-                "sample_request": {
-                    "file": "<file> (multipart/form-data)",
-                    "username": "alice"  # if not authenticated
+                {
+                    "path": "/api/create-superuser/",
+                    "methods": ["POST"],
+                    "description": "Create a superuser with fixed credentials (for setup/demo only).",
+                    "sample_request": {},
+                    "sample_response": {"status": "created", "username": "superadmin", "email": "srot.dev@gmail.com"}
                 },
-                "sample_response": "204 No Content (on upload success) or file download (on GET)"
-            },
-            {
-                "path": "/api/model/",
-                "methods": ["POST", "GET", "HEAD"],
-                "description": "Upload, download, or check the DPO model zip file for a user.",
-                "sample_request": {
-                    "file": "<file> (multipart/form-data)",
-                    "username": "alice"  # if not authenticated
+                {
+                    "path": "/api/login/",
+                    "methods": ["POST"],
+                    "description": "Authenticate user and obtain JWT tokens.",
+                    "sample_request": {
+                        "username": "alice",
+                        "password": "yourpassword"
+                    },
+                    "sample_response": {
+                        "refresh": "<refresh_token>",
+                        "access": "<access_token>",
+                        "username": "alice",
+                        "email": "alice@example.com",
+                        "firstname": "Alice",
+                        "lastname": "Smith"
+                    }
                 },
-                "sample_response": "204 No Content (on upload success), file download (on GET), or Content-Length header (on HEAD)"
-            },
-            {
-                "path": "/api/model/unzip/",
-                "methods": ["POST"],
-                "description": "Unzip the uploaded DPO model for a user.",
-                "sample_request": {
-                    "username": "alice"
+                {
+                    "path": "/api/dataset/",
+                    "methods": ["POST", "GET"],
+                    "description": "Upload or download the per-user SFT dataset (JSONL).",
+                    "sample_request": {
+                        "file": "<file> (multipart/form-data)",
+                        "username": "alice"  # if not authenticated
+                    },
+                    "sample_response": "204 No Content (on upload success) or file download (on GET)"
                 },
-                "sample_response": {
-                    "status": "unzipped"
-                }
-            },
-            {
-                "path": "/api/agent-training-status/",
-                "methods": ["POST"],
-                "description": "Update the agent training status for the authenticated user.",
-                "sample_request": {
-                    "status": "training"  # one of [idle, pending, training, completed, failed]
+                {
+                    "path": "/api/model/",
+                    "methods": ["POST", "GET", "HEAD"],
+                    "description": "Upload, download, or check the DPO model zip file for a user.",
+                    "sample_request": {
+                        "file": "<file> (multipart/form-data)",
+                        "username": "alice"  # if not authenticated
+                    },
+                    "sample_response": "204 No Content (on upload success), file download (on GET), or Content-Length header (on HEAD)"
                 },
-                "sample_response": {
-                    "status": "updated",
-                    "agent_training_status": "training",
-                    "agent_last_modified": "2025-09-12T12:34:56Z"
-                }
-            },
-            {
-                "path": "/api/telegram/",
-                "methods": ["GET", "POST", "PATCH"],
-                "description": "Get, create, or update Telegram API credentials for a user.",
-                "sample_request": {
-                    "username": "alice",
-                    "telegram_api_id": "123456",
-                    "telegram_api_hash": "abcdef...",
-                    "telegram_mobile_number": "+1234567890",
-                    "telegram_pin_code": "12345"
+                {
+                    "path": "/api/model/unzip/",
+                    "methods": ["POST"],
+                    "description": "Unzip the uploaded DPO model for a user.",
+                    "sample_request": {
+                        "username": "alice"
+                    },
+                    "sample_response": {
+                        "status": "unzipped"
+                    }
                 },
-                "sample_response": {
-                    "status": "created"  # or "updated"
-                }
-            },
-            {
-                "path": "/api/userbot/",
-                "methods": ["POST", "DELETE", "GET"],
-                "description": "Start, stop, or query the Telegram userbot for a user.",
-                "sample_request": {
-                    "username": "alice",
-                    "model_choice": "kimi"  # optional, default 'kimi'
+                {
+                    "path": "/api/agent-training-status/",
+                    "methods": ["POST"],
+                    "description": "Update the agent training status for the authenticated user.",
+                    "sample_request": {
+                        "status": "training"  # one of [idle, pending, training, completed, failed]
+                    },
+                    "sample_response": {
+                        "status": "updated",
+                        "agent_training_status": "training",
+                        "agent_last_modified": "2025-09-12T12:34:56Z"
+                    }
                 },
-                "sample_response": {
-                    "status": "started"  # or "stopped", "already running", "not running"
-                }
-            },
-            {
-                "path": "/api/messages/",
-                "methods": ["GET", "POST"],
-                "description": "List, filter, search, or create chat messages.",
-                "sample_request": {
-                    "user": "alice",  # filter by username (GET)
-                    "contact": "Bob",  # filter by contact name (GET)
-                    "replied": "true",  # filter by replied status (GET)
-                    "sentiment": "positive"  # filter by sentiment (GET)
+                {
+                    "path": "/api/telegram/",
+                    "methods": ["GET", "POST", "PATCH"],
+                    "description": "Get, create, or update Telegram API credentials for a user.",
+                    "sample_request": {
+                        "username": "alice",
+                        "telegram_api_id": "123456",
+                        "telegram_api_hash": "abcdef...",
+                        "telegram_mobile_number": "+1234567890",
+                        "telegram_pin_code": "12345"
+                    },
+                    "sample_response": {
+                        "status": "created"  # or "updated"
+                    }
                 },
-                "sample_response": [
-                    {
+                {
+                    "path": "/api/userbot/",
+                    "methods": ["POST", "DELETE", "GET"],
+                    "description": "Start, stop, or query the Telegram userbot for a user.",
+                    "sample_request": {
+                        "username": "alice",
+                        "model_choice": "kimi"  # optional, default 'kimi'
+                    },
+                    "sample_response": {
+                        "status": "started"  # or "stopped", "already running", "not running"
+                    }
+                },
+                {
+                    "path": "/api/messages/",
+                    "methods": ["GET", "POST"],
+                    "description": "List, filter, search, or create chat messages.",
+                    "sample_request": {
+                        "user": "alice",  # filter by username (GET)
+                        "contact": "Bob",  # filter by contact name (GET)
+                        "replied": "true",  # filter by replied status (GET)
+                        "sentiment": "positive"  # filter by sentiment (GET)
+                    },
+                    "sample_response": [
+                        {
+                            "id": 1,
+                            "user": 1,
+                            "contact": 2,
+                            "message": "Hi!",
+                            "reply_message": "Hello!",
+                            "timestamp": "2025-09-12T12:34:56Z",
+                            "replied": True,
+                            "score": 5,
+                            "is_important": False,
+                            "is_toxic": False,
+                            "sentiment": "positive",
+                            "emotion": "happy",
+                            "platform": "telegram"
+                        }
+                    ]
+                },
+                {
+                    "path": "/api/messages/<id>/",
+                    "methods": ["GET", "PUT", "PATCH", "DELETE"],
+                    "description": "Retrieve, update, or delete a specific chat message by ID.",
+                    "sample_request": {
+                        "message": "Updated message text"
+                    },
+                    "sample_response": {
                         "id": 1,
                         "user": 1,
                         "contact": 2,
-                        "message": "Hi!",
+                        "message": "Updated message text",
                         "reply_message": "Hello!",
                         "timestamp": "2025-09-12T12:34:56Z",
                         "replied": True,
@@ -161,32 +202,8 @@ class APIEndpointsInfoView(APIView):
                         "emotion": "happy",
                         "platform": "telegram"
                     }
-                ]
-            },
-            {
-                "path": "/api/messages/<id>/",
-                "methods": ["GET", "PUT", "PATCH", "DELETE"],
-                "description": "Retrieve, update, or delete a specific chat message by ID.",
-                "sample_request": {
-                    "message": "Updated message text"
-                },
-                "sample_response": {
-                    "id": 1,
-                    "user": 1,
-                    "contact": 2,
-                    "message": "Updated message text",
-                    "reply_message": "Hello!",
-                    "timestamp": "2025-09-12T12:34:56Z",
-                    "replied": True,
-                    "score": 5,
-                    "is_important": False,
-                    "is_toxic": False,
-                    "sentiment": "positive",
-                    "emotion": "happy",
-                    "platform": "telegram"
                 }
-            }
-        ]
+            ]
         return JsonResponse({"api_endpoints": endpoints}, json_dumps_params={"indent": 2})
     
 
@@ -236,7 +253,7 @@ class RegisterView(APIView):
 
         # Create agent_dump/{username} and copy template files/folders
         base_dir = os.path.join('agent_dump', username)
-        template_dir = os.path.join('agent_dump', 'emotuna_user')
+        template_dir = os.path.join('agent_dump', 'temp_user')
         os.makedirs(base_dir, exist_ok=True)
         if os.path.exists(template_dir):
             for item in os.listdir(template_dir):
@@ -247,6 +264,17 @@ class RegisterView(APIView):
                         shutil.copytree(s, d)
                 else:
                     shutil.copy2(s, d)
+            # Add and commit the new user directory to git
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+            rel_base_dir = os.path.relpath(base_dir, repo_root)
+            try:
+                subprocess.run(['git', 'add', rel_base_dir], cwd=repo_root, check=True)
+                # Only commit if there are staged changes
+                result = subprocess.run(['git', 'diff', '--cached', '--name-only'], cwd=repo_root, capture_output=True, text=True)
+                if rel_base_dir.replace('\\', '/') in result.stdout or rel_base_dir.replace('/', '\\') in result.stdout:
+                    subprocess.run(['git', 'commit', '-m', f'Add user directory for {username}'], cwd=repo_root, check=True)
+            except Exception as e:
+                print(f"Warning: Could not git add/commit user directory for {username}: {e}")
 
         refresh = RefreshToken.for_user(user)
         return Response({
@@ -257,6 +285,28 @@ class RegisterView(APIView):
             'firstname': user.first_name,
             'lastname': user.last_name
         }, status=status.HTTP_201_CREATED)
+
+
+# Delete user directory and remove from git when user is deleted
+@receiver(post_delete, sender=User)
+def delete_user_folder_and_git(sender, instance, **kwargs):
+    username = instance.username
+    base_dir = os.path.join('agent_dump', username)
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+    abs_base_dir = os.path.join(repo_root, base_dir)
+    if os.path.exists(abs_base_dir):
+        try:
+            shutil.rmtree(abs_base_dir)
+            rel_base_dir = os.path.relpath(abs_base_dir, repo_root)
+            subprocess.run(['git', 'rm', '-r', rel_base_dir], cwd=repo_root, check=True)
+            # Only commit if there are staged changes
+            result = subprocess.run(['git', 'diff', '--cached', '--name-only'], cwd=repo_root, capture_output=True, text=True)
+            if rel_base_dir.replace('\\', '/') in result.stdout or rel_base_dir.replace('/', '\\') in result.stdout:
+                subprocess.run(['git', 'commit', '-m', f'Remove user directory for {username}'], cwd=repo_root, check=True)
+        except Exception as e:
+            print(f"Warning: Could not delete user directory or remove from git for {username}: {e}")
+
+
 
 # User Login API
 class LoginView(APIView):
@@ -282,6 +332,84 @@ class LoginView(APIView):
             return Response({'error': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+
+# Logout endpoint: blacklist JWT and stop userbot if running
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, format=None):
+        user = request.user
+        # Blacklist all outstanding tokens for this user
+        try:
+            tokens = OutstandingToken.objects.filter(user=user)
+            for token in tokens:
+                try:
+                    BlacklistedToken.objects.get_or_create(token=token)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"Warning: Could not blacklist tokens for {user.username}: {e}")
+        # Stop userbot if running
+        username = user.username
+        bot = RUNNING_USERBOTS.get(username)
+        if bot:
+            bot.stop()
+            del RUNNING_USERBOTS[username]
+        return Response({"status": "logged out"}, status=200)
+
+
+
+# Profile API endpoint
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, format=None):
+        user = request.user
+        try:
+            profile = UserProfile.objects.get(user=user)
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'UserProfile not found.'}, status=404)
+        agent_running_status = user.username in RUNNING_USERBOTS
+        data = {
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'username': user.username,
+            'email': user.email,
+            'agent_training_status': profile.agent_training_status,
+            'agent_last_modified': profile.agent_last_modified,
+            'agent_running_status': agent_running_status,
+        }
+        return Response(data, status=200)
+
+    def patch(self, request, format=None):
+        user = request.user
+        profile = UserProfile.objects.filter(user=user).first()
+        if not profile:
+            return Response({'error': 'UserProfile not found.'}, status=404)
+        # Allow updating first_name, last_name, email
+        for field in ['first_name', 'last_name', 'email']:
+            if field in request.data:
+                setattr(user, field, request.data[field])
+        user.save()
+        # Optionally allow updating agent_training_status
+        if 'agent_training_status' in request.data:
+            profile.agent_training_status = request.data['agent_training_status']
+            profile.agent_last_modified = timezone.now()
+            profile.save()
+        return Response({'status': 'updated'}, status=200)
+
+    def delete(self, request, format=None):
+        user = request.user
+        username = user.username
+        # Stop userbot if running
+        bot = RUNNING_USERBOTS.get(username)
+        if bot:
+            bot.stop()
+            del RUNNING_USERBOTS[username]
+        user.delete()
+        return Response({'status': 'deleted'}, status=200)
+    
+    
 
 # Utility to get per-user dump path
 def get_user_dump_path(username):

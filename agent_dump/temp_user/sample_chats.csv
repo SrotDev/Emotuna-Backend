@@ -1,0 +1,4 @@
+id,timestamp,message,platform,emotion,sentiment,is_toxic,telegram_chat_id,telegram_message_id,is_important,is_nsfw,user_approved_reply,reply_sent,score,ai_generated_message,reply_message,user,contact
+1,2025-09-09 15:00:00,Did you eat lunch?,imported,,,false,,,false,false,true,true,,,Yes, I just finished eating!,2,Mom
+2,2025-09-09 15:05:00,You are so annoying!,imported,,,false,,,false,false,true,true,,,Sorry, didn’t mean to bother you.,2,Friend
+3,2025-09-09 15:10:00,Please submit the report by EOD.,imported,,,false,,,false,false,true,true,,,Sure, I’ll send it before 5 PM.,2,Boss
