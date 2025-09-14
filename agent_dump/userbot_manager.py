@@ -1,6 +1,5 @@
+
 from asgiref.sync import sync_to_async
-import os
-import sys
 import logging
 import asyncio
 import inspect
@@ -9,7 +8,7 @@ from telethon import TelegramClient, events
 from django.contrib.auth import get_user_model
 from chat.models import ChatMessage, Contact, Telegram
 from agent_dump.agent_workflow import agent_generate_reply
-from agent_dump.pipeline_utils import import_sample_chats_to_db, classify_new_messages, embed_new_messages, convert_dpo_feedback_to_sft
+from agent_dump.pipeline_utils import classify_new_message, embed_new_message
 from datetime import datetime
 
 User = get_user_model()
@@ -23,8 +22,6 @@ class TelegramUserBotManager:
         self.session_name = session_name
         self.model_choice = model_choice
         self.username = str(self.user.username)
-        self.BASE_DIR = os.path.join('agent_dump', self.username)
-        os.makedirs(self.BASE_DIR, exist_ok=True)
         self.client = None  # Will be created in the thread with event loop
         self.handler_attached = False
         self.running = False
@@ -70,19 +67,68 @@ class TelegramUserBotManager:
                 else:
                     ai_reply = await asyncio.to_thread(self.generate, user_message, self.username)
                 # Store message in DB, replied=False
+                from chat.models import UserProfile
+                # Check agent_auto_reply
+                profile = await sync_to_async(UserProfile.objects.get)(user=self.user)
+                auto_reply = profile.agent_auto_reply
+                user_approved_reply = False
+                score = None
+                reply_message = None
+                if auto_reply:
+                    user_approved_reply = True
+                    score = 100
+                    reply_message = ai_reply
                 chat_msg = await sync_to_async(ChatMessage.objects.create)(
                     user=self.user,
                     contact=contact,
                     timestamp=datetime.now(),
                     message=user_message,
                     ai_generated_message=ai_reply,
-                    user_approved_reply=False,
+                    user_approved_reply=user_approved_reply,
                     reply_sent=False,
                     platform='Telegram',
                     telegram_chat_id=getattr(event, 'chat_id', None),
                     telegram_message_id=getattr(event, 'id', None),
+                    score=score,
+                    reply_message=reply_message,
                 )
                 print(f"[UserBotManager] ChatMessage created in DB for {self.user.username}, id={chat_msg.id}")
+                await asyncio.to_thread(classify_new_message, chat_msg.id)
+                await asyncio.to_thread(embed_new_message, chat_msg.id)
+                # If auto_reply, send immediately and run next pipeline
+                if auto_reply:
+                    try:
+                        if chat_msg.telegram_chat_id and chat_msg.telegram_message_id:
+                            print(f"[UserBotManager] [AutoReply] Sending reply to chat_id={chat_msg.telegram_chat_id}, message_id={chat_msg.telegram_message_id} for message {chat_msg.id} by {self.user.username}")
+                            await self.client.send_message(
+                                entity=chat_msg.telegram_chat_id,
+                                message=chat_msg.reply_message,
+                                reply_to=chat_msg.telegram_message_id
+                            )
+                        else:
+                            contact = chat_msg.contact
+                            peer = contact.telegram_user_id or contact.telegram_username
+                            if peer is None:
+                                print(f"[UserBotManager] [AutoReply] WARNING: No valid peer for message {chat_msg.id} by {self.user.username}. Marking as sent and skipping.")
+                                chat_msg.reply_sent = True
+                                await sync_to_async(chat_msg.save)()
+                                return
+                            print(f"[UserBotManager] [AutoReply] Sending fallback reply to {peer} for message {chat_msg.id} by {self.user.username}")
+                            await self.client.send_message(peer, chat_msg.reply_message)
+                        chat_msg.reply_sent = True
+                        await sync_to_async(chat_msg.save)()
+                        print(f"[UserBotManager] [AutoReply] Reply sent and marked for message {chat_msg.id} by {self.user.username}")
+                        # Ensure classification and embedding are run before returning
+                        await asyncio.to_thread(classify_new_message, chat_msg.id)
+                        await asyncio.to_thread(embed_new_message, chat_msg.id)
+                        # Reload from DB and check reply_sent before returning
+                        from chat.models import ChatMessage as ChatMessageModel
+                        latest_msg = await sync_to_async(ChatMessageModel.objects.get)(id=chat_msg.id)
+                        if latest_msg.reply_sent:
+                            return
+                    except Exception as e:
+                        print(f"[UserBotManager] [AutoReply] Failed to send reply for message {chat_msg.id} by {self.user.username}: {e}")
+                        logging.exception(f"[AutoReply] Failed to send reply for message {chat_msg.id}: {e}")
             except Exception as e:
                 print(f"[UserBotManager] Exception in handler for {self.user.username}: {e}")
         self.handler_attached = True
@@ -187,6 +233,11 @@ class TelegramUserBotManager:
             # Start Telethon client in background
             client_task = asyncio.create_task(self.client.run_until_disconnected())
             while self.running:
+                # Print count of messages needing user approval (not yet approved and not yet sent)
+                pending_approval = await sync_to_async(lambda: list(ChatMessage.objects.select_related('contact').filter(user=self.user, user_approved_reply=False, reply_sent=False, platform='Telegram')))()
+                pending_approval_count = len(pending_approval)
+                print(f"[UserBotManager] Pending messages needing approval for {self.user.username}: {pending_approval_count}")
+
                 # Only send replies for messages user has approved and not yet sent
                 pending = await sync_to_async(lambda: list(ChatMessage.objects.select_related('contact').filter(user=self.user, user_approved_reply=True, reply_sent=False, platform='Telegram')))()
                 pending_count = len(pending)
@@ -220,13 +271,9 @@ class TelegramUserBotManager:
                         msg.reply_sent = True
                         await sync_to_async(msg.save)()
                         print(f"[UserBotManager] Reply sent and marked for message {msg.id} by {self.user.username}")
-                        # Feedback pipeline (pass username)
-                        asyncio.create_task(asyncio.to_thread(classify_new_messages))
-                        asyncio.create_task(asyncio.to_thread(import_sample_chats_to_db, self.username))
-                        asyncio.create_task(asyncio.to_thread(embed_new_messages))
-                        feedback_csv = os.path.join(self.BASE_DIR, 'dpo_feedback_log.csv')
-                        sft_jsonl = os.path.join(self.BASE_DIR, 'sft_dataset.jsonl')
-                        asyncio.create_task(asyncio.to_thread(convert_dpo_feedback_to_sft, feedback_csv, sft_jsonl))
+                        # Feedback pipeline (DB only, per message)
+                        asyncio.create_task(asyncio.to_thread(classify_new_message, msg.id))
+                        asyncio.create_task(asyncio.to_thread(embed_new_message, msg.id))
                     except Exception as e:
                         print(f"[UserBotManager] Failed to send reply for message {msg.id} by {self.user.username}: {e}")
                         logging.exception(f"Failed to send reply for message {msg.id}: {e}")

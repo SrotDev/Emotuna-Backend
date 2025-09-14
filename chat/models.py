@@ -1,3 +1,4 @@
+
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -14,6 +15,8 @@ class UserProfile(models.Model):
 		],
 		default="idle"
 	)
+
+	agent_auto_reply = models.BooleanField(default=False)
 	agent_last_modified = models.DateTimeField(auto_now=True)
 
 	def __str__(self):
@@ -68,3 +71,25 @@ class Telegram(models.Model):
 
 	def __str__(self):
 		return f"{self.user.username} Telegram ({self.telegram_mobile_number})"
+	
+
+# Notification model
+class Notification(models.Model):
+	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+	body = models.TextField()
+	is_read = models.BooleanField(default=False)
+	timestamp = models.DateTimeField(auto_now_add=True)
+
+	def __str__(self):
+		return f"Notification for {self.user.username}: {self.body[:30]}..."
+	
+
+# User DPO-Model file uploads
+class UserModelFile(models.Model):
+	user = models.ForeignKey(User, on_delete=models.CASCADE)
+	filename = models.CharField(max_length=255)
+	file = models.BinaryField()
+	uploaded_at = models.DateTimeField(auto_now_add=True)
+
+	def __str__(self):
+		return f"{self.user.username} - {self.filename} ({self.uploaded_at})"

@@ -1,19 +1,31 @@
+
 import os
 import pymysql
 import numpy as np
 
+
 class TiDBVectorDB:
+    """
+    Utility class for storing and retrieving vector embeddings in TiDB.
+    """
     def __init__(self):
-        self.conn = pymysql.connect(
-            host=os.getenv('TIDB_HOST'),
-            user=os.getenv('TIDB_USER'),
-            password=os.getenv('TIDB_PASSWORD'),
-            database=os.getenv('TIDB_DATABASE'),
-            port=int(os.getenv('TIDB_PORT', 4000)),
-            ssl={'ssl': {}}
-        )
+        # Read required environment variables
+        host = os.getenv('TIDB_HOST')
+        user = os.getenv('TIDB_USER')
+        password = os.getenv('TIDB_PASSWORD')
+        database = os.getenv('TIDB_DATABASE')
+        port = int(os.getenv('TIDB_PORT', 4000))
+        use_ssl = os.getenv('TIDB_USE_SSL', '1') != '0'
+        if not all([host, user, password, database]):
+            raise RuntimeError("Missing one or more required TiDB environment variables: TIDB_HOST, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE")
+        connect_kwargs = dict(host=host, user=user, password=password, database=database, port=port)
+        if use_ssl:
+            connect_kwargs['ssl'] = {'ssl': {}}
+        self.conn = pymysql.connect(**connect_kwargs)
+
 
     def create_table(self):
+        """Create the message_embeddings table if it does not exist."""
         with self.conn.cursor() as cursor:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS message_embeddings (
@@ -29,8 +41,9 @@ class TiDBVectorDB:
             ''')
         self.conn.commit()
 
+
     def insert_embedding(self, id, user_id, message, embedding, reply_message=None, reply_embedding=None):
-        # Store numpy array as bytes and shape
+        """Insert or update a message embedding and its reply embedding."""
         emb_bytes = embedding.tobytes() if embedding is not None else None
         emb_shape = embedding.shape[0] if embedding is not None else None
         reply_emb_bytes = reply_embedding.tobytes() if reply_embedding is not None else None
@@ -42,7 +55,9 @@ class TiDBVectorDB:
             )
         self.conn.commit()
 
+
     def get_embedding(self, id):
+        """Retrieve the embedding for a given message ID as a numpy array."""
         with self.conn.cursor() as cursor:
             cursor.execute('SELECT embedding, embedding_shape FROM message_embeddings WHERE id=%s', (id,))
             row = cursor.fetchone()
@@ -50,5 +65,13 @@ class TiDBVectorDB:
                 return np.frombuffer(row[0], dtype=np.float32)[:row[1]]
             return None
 
+
     def close(self):
+        """Close the database connection."""
         self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

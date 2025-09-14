@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import UserProfile, Contact, ChatMessage, Telegram
+from .models import UserProfile, Contact, ChatMessage, Telegram, Notification, UserModelFile
 
 
 @admin.register(UserProfile)
@@ -28,3 +28,19 @@ class TelegramAdmin(admin.ModelAdmin):
 	list_display = ('user', 'telegram_api_id', 'telegram_mobile_number', 'pin_required')
 	search_fields = ('user__username', 'telegram_mobile_number')
 	list_filter = ('pin_required',)
+
+
+# Register Notification model
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+	list_display = ('user', 'body', 'is_read', 'timestamp')
+	search_fields = ('user__username', 'body')
+	list_filter = ('user', 'is_read', 'timestamp')
+
+
+# Register UserModelFile model
+@admin.register(UserModelFile)
+class UserModelFileAdmin(admin.ModelAdmin):
+	list_display = ('user', 'filename', 'uploaded_at')
+	search_fields = ('user__username', 'filename')
+	list_filter = ('user', 'uploaded_at')
