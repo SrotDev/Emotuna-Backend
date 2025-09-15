@@ -60,13 +60,15 @@ class RegisterView(APIView):
         UserProfile.objects.create(user=user)
 
         refresh = RefreshToken.for_user(user)
+        profile = UserProfile.objects.get(user=user)
         return Response({
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'username': user.username,
             'email': user.email,
             'firstname': user.first_name,
-            'lastname': user.last_name
+            'lastname': user.last_name,
+            'is_onboarded': profile.is_onboarded
         }, status=status.HTTP_201_CREATED)
 
 
@@ -88,6 +90,12 @@ class LoginView(APIView):
                 data['email'] = user.email
                 data['firstname'] = user.first_name
                 data['lastname'] = user.last_name
+                # Add is_onboarded field
+                try:
+                    profile = UserProfile.objects.get(user=user)
+                    data['is_onboarded'] = profile.is_onboarded
+                except UserProfile.DoesNotExist:
+                    data['is_onboarded'] = False
                 return Response(data, status=status.HTTP_200_OK)
             else:
                 return Response({'error': 'Token generation failed.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -482,6 +490,14 @@ class TelegramModelView(APIView):
         telegram.telegram_mobile_number = telegram_mobile_number
         telegram.telegram_pin_code = telegram_pin_code
         telegram.save()
+        # Set is_onboarded True on UserProfile if not already
+        try:
+            profile = UserProfile.objects.get(user=user_obj)
+            if not profile.is_onboarded:
+                profile.is_onboarded = True
+                profile.save(update_fields=["is_onboarded"])
+        except UserProfile.DoesNotExist:
+            pass
         return Response({'status': 'created' if created else 'updated'}, status=201 if created else 200)
 
     def patch(self, request, format=None):

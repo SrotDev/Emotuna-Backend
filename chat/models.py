@@ -18,6 +18,7 @@ class UserProfile(models.Model):
 
 	agent_auto_reply = models.BooleanField(default=False)
 	agent_last_modified = models.DateTimeField(auto_now=True)
+	is_onboarded = models.BooleanField(default=False)
 
 	def __str__(self):
 		return self.user.username
