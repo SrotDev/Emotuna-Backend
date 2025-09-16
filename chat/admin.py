@@ -18,7 +18,7 @@ class ContactAdmin(admin.ModelAdmin):
 
 @admin.register(ChatMessage)
 class ChatMessageAdmin(admin.ModelAdmin):
-	list_display = ('user', 'contact', 'message', 'reply_message', 'timestamp', 'reply_sent', 'user_approved_reply', 'score', 'is_important', 'is_toxic', 'sentiment', 'emotion', 'platform')
+	list_display = ('user', 'contact', 'message', 'ai_generated_message', 'reply_message', 'timestamp', 'reply_sent', 'user_approved_reply', 'score', 'is_important', 'is_toxic', 'sentiment', 'emotion', 'platform')
 	search_fields = ('message', 'reply_message', 'user__username', 'contact__name', 'sentiment', 'emotion', 'platform')
 	list_filter = ('user', 'contact', 'reply_sent', 'user_approved_reply', 'is_important', 'is_toxic', 'sentiment', 'platform')
 
