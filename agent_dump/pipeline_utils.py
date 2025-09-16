@@ -28,7 +28,7 @@ def classify_new_message(msg):
         raise RuntimeError("HF_API_KEY not set in environment variables.")
     HF_API_URL = 'https://api-inference.huggingface.co/models/'
     CLASSIFICATION_MODEL = 'facebook/bart-large-mnli'
-    SENTIMENT_MODEL = 'siebert/sentiment-roberta-large-english'
+    SENTIMENT_MODEL = 'cardiffnlp/twitter-roberta-base-sentiment-latest'
     TOXICITY_MODEL = 'unitary/toxic-bert'
     HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 

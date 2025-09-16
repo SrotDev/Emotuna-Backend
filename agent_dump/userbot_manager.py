@@ -62,10 +62,15 @@ class TelegramUserBotManager:
                     await sync_to_async(contact.save)()
                 # Generate reply (but do not send yet)
                 # Always use kimi model
-                if inspect.iscoroutinefunction(self.generate):
-                    ai_reply = await self.generate(user_message, self.username)
-                else:
-                    ai_reply = await asyncio.to_thread(self.generate, user_message, self.username)
+                try:
+                    if inspect.iscoroutinefunction(self.generate):
+                        ai_reply = await self.generate(user_message, self.username)
+                    else:
+                        ai_reply = await asyncio.to_thread(self.generate, user_message, self.username)
+                    print(f"[UserBotManager] [Kimi] Generated reply: {ai_reply}")
+                except Exception as gen_exc:
+                    print(f"[UserBotManager] [Kimi] Failed to generate reply for {self.user.username}: {gen_exc}")
+                    ai_reply = None
                 # Store message in DB, replied=False
                 from chat.models import UserProfile
                 # Check agent_auto_reply
