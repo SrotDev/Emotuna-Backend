@@ -4,9 +4,9 @@ from .models import UserProfile, Contact, ChatMessage, Telegram, Notification, U
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-	list_display = ('user', 'agent_training_status', 'agent_last_modified', 'is_onboarded')
-	search_fields = ('user__username',)
-	list_filter = ('agent_training_status', 'is_onboarded')
+	list_display = ('user', 'agent_training_status', 'agent_last_modified', 'is_onboarded', 'agent_auto_reply')
+	search_fields = ('user__username', 'agent_auto_reply')
+	list_filter = ('agent_training_status', 'is_onboarded', 'agent_auto_reply')
 
 
 @admin.register(Contact)
