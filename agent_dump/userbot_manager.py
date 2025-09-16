@@ -71,6 +71,7 @@ class TelegramUserBotManager:
                 except Exception as gen_exc:
                     print(f"[UserBotManager] [Kimi] Failed to generate reply for {self.user.username}: {gen_exc}")
                     ai_reply = None
+                print(f"[UserBotManager] [DEBUG] ai_reply before DB save: {repr(ai_reply)}")
                 # Store message in DB, replied=False
                 from chat.models import UserProfile
                 # Check agent_auto_reply
