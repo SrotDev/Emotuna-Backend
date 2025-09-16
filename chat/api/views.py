@@ -228,7 +228,9 @@ class DatasetUploadView(APIView):
                 'ai_generated_message': msg.ai_generated_message,
                 'reply_message': msg.reply_message,
             })
-        return Response(data, content_type='application/json')
+        response = Response(data, content_type='application/json')
+        response['Content-Disposition'] = 'attachment; filename="dataset.json"'
+        return response
 
     def post(self, request, format=None):
         import json
@@ -244,14 +246,16 @@ class DatasetUploadView(APIView):
         file_obj = request.FILES.get('file')
         if not file_obj:
             return Response({'error': 'No file provided'}, status=400)
-        # Parse uploaded JSON (not JSONL) and append to ChatMessage DB
+        # Only accept valid JSON array, not JSONL
         from django.contrib.auth.models import User
         from chat.models import Contact, ChatMessage
         user_obj = User.objects.get(username=username)
         added = 0
         try:
-            # file_obj.read() returns bytes, decode to str
-            rows = json.loads(file_obj.read().decode('utf-8'))
+            content = file_obj.read().decode('utf-8')
+            rows = json.loads(content)
+            if not isinstance(rows, list):
+                return Response({'error': 'Uploaded file must be a JSON array, not JSONL or object.'}, status=400)
             for row in rows:
                 # Find or create a contact (fallback to 'Imported')
                 contact, _ = Contact.objects.get_or_create(user=user_obj, name=row.get('contact') or 'Imported', defaults={'platform': row.get('platform', 'imported')})
