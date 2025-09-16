@@ -273,7 +273,11 @@ class TelegramUserBotManager:
                                 await sync_to_async(msg.save)()
                                 continue
                             print(f"[UserBotManager] Sending fallback reply to {peer} for message {msg.id} by {self.user.username}")
-                            await self.client.send_message(peer, reply_text)
+                            try:
+                                entity = await self.client.get_entity(peer)
+                                await self.client.send_message(entity, reply_text)
+                            except Exception as e:
+                                print(f"[UserBotManager] Failed to resolve entity for {peer}: {e}")
                         msg.reply_sent = True
                         await sync_to_async(msg.save)()
                         print(f"[UserBotManager] Reply sent and marked for message {msg.id} by {self.user.username}")
