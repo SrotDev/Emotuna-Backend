@@ -157,17 +157,27 @@ class ProfileView(APIView):
         profile = UserProfile.objects.filter(user=user).first()
         if not profile:
             return Response({'error': 'UserProfile not found.'}, status=404)
+        updated = False
         # Allow updating first_name, last_name, email
         for field in ['first_name', 'last_name', 'email']:
             if field in request.data:
-                setattr(user, field, request.data[field])
-        user.save()
+                value = request.data[field]
+                setattr(user, field, value)
+                updated = True
+        if updated:
+            user.save(update_fields=[f for f in ['first_name', 'last_name', 'email'] if f in request.data])
         # Optionally allow updating agent_training_status
         if 'agent_training_status' in request.data:
             profile.agent_training_status = request.data['agent_training_status']
             profile.agent_last_modified = timezone.now()
-            profile.save()
-        return Response({'status': 'updated'}, status=200)
+            profile.save(update_fields=['agent_training_status', 'agent_last_modified'])
+            updated = True
+        # Optionally allow updating other UserProfile fields (extensible)
+        # Add more fields here if needed
+        if updated:
+            return Response({'status': 'updated'}, status=200)
+        else:
+            return Response({'status': 'no changes'}, status=200)
 
     def delete(self, request, format=None):
         user = request.user
