@@ -413,20 +413,19 @@ class ChatMessageListCreateView(generics.ListCreateAPIView):
     ordering_fields = ['timestamp', 'score', 'is_important', 'is_toxic', 'sentiment']
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        # Optional filters via query params
-        user = self.request.query_params.get('user')
+        # Only return messages for the authenticated user
+        user = self.request.user
+        queryset = super().get_queryset().filter(user=user)
+        # Optional filters via query params (all applied to user's own messages only)
         contact = self.request.query_params.get('contact')
         replied = self.request.query_params.get('replied')
         reply_sent = self.request.query_params.get('reply_sent')
         user_approved_reply = self.request.query_params.get('user_approved_reply')
         sentiment = self.request.query_params.get('sentiment')
-        if user:
-            queryset = queryset.filter(user__username=user)
         if contact:
             queryset = queryset.filter(contact__name=contact)
         if replied is not None:
-            queryset = queryset.filter(replied=(replied.lower() == 'true'))
+            queryset = queryset.filter(reply_message__isnull=(replied.lower() == 'false'))
         if reply_sent is not None:
             queryset = queryset.filter(reply_sent=(reply_sent.lower() == 'true'))
         if user_approved_reply is not None:

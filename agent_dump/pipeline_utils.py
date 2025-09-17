@@ -95,8 +95,9 @@ def embed_new_message(msg):
     # Accept either a ChatMessage instance or an ID
     if isinstance(msg, int):
         msg = ChatMessage.objects.get(id=msg)
-    # Fit vectorizer on all messages and replies for consistent space
-    messages = list(ChatMessage.objects.all())
+    # Fit vectorizer only on messages and replies for the current user
+    user_id = msg.user_id if hasattr(msg, 'user_id') else msg.user.id
+    messages = list(ChatMessage.objects.filter(user_id=user_id))
     texts = [m.message for m in messages if m.message]
     reply_texts = [m.reply_message for m in messages if m.reply_message]
     fit_corpus = texts + reply_texts if reply_texts else texts

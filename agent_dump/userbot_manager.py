@@ -74,67 +74,71 @@ class TelegramUserBotManager:
                 print(f"[UserBotManager] [DEBUG] ai_reply before DB save: {repr(ai_reply)}")
                 # Store message in DB, replied=False
                 from chat.models import UserProfile
-                # Check agent_auto_reply
                 profile = await sync_to_async(UserProfile.objects.get)(user=self.user)
                 auto_reply = profile.agent_auto_reply
                 user_approved_reply = False
                 score = None
                 reply_message = None
-                if auto_reply:
-                    user_approved_reply = True
-                    score = 100
-                    reply_message = ai_reply
+                # Always classify first
+                # Create message in DB with user_approved_reply=False, reply_sent=False
                 chat_msg = await sync_to_async(ChatMessage.objects.create)(
                     user=self.user,
                     contact=contact,
                     timestamp=datetime.now(),
                     message=user_message,
                     ai_generated_message=ai_reply,
-                    user_approved_reply=user_approved_reply,
+                    user_approved_reply=False,
                     reply_sent=False,
                     platform='Telegram',
                     telegram_chat_id=getattr(event, 'chat_id', None),
                     telegram_message_id=getattr(event, 'id', None),
-                    score=score,
-                    reply_message=reply_message,
+                    score=None,
+                    reply_message=None,
                 )
                 print(f"[UserBotManager] ChatMessage created in DB for {self.user.username}, id={chat_msg.id}")
                 await asyncio.to_thread(classify_new_message, chat_msg.id)
                 await asyncio.to_thread(embed_new_message, chat_msg.id)
-                # If auto_reply, send immediately and run next pipeline
-                if auto_reply:
-                    try:
-                        if chat_msg.telegram_chat_id and chat_msg.telegram_message_id:
-                            print(f"[UserBotManager] [AutoReply] Sending reply to chat_id={chat_msg.telegram_chat_id}, message_id={chat_msg.telegram_message_id} for message {chat_msg.id} by {self.user.username}")
-                            await self.client.send_message(
-                                entity=chat_msg.telegram_chat_id,
-                                message=chat_msg.reply_message,
-                                reply_to=chat_msg.telegram_message_id
-                            )
-                        else:
-                            contact = chat_msg.contact
-                            peer = contact.telegram_user_id or contact.telegram_username
-                            if peer is None:
-                                print(f"[UserBotManager] [AutoReply] WARNING: No valid peer for message {chat_msg.id} by {self.user.username}. Marking as sent and skipping.")
-                                chat_msg.reply_sent = True
-                                await sync_to_async(chat_msg.save)()
-                                return
-                            print(f"[UserBotManager] [AutoReply] Sending fallback reply to {peer} for message {chat_msg.id} by {self.user.username}")
-                            await self.client.send_message(peer, chat_msg.reply_message)
-                        chat_msg.reply_sent = True
-                        await sync_to_async(chat_msg.save)()
-                        print(f"[UserBotManager] [AutoReply] Reply sent and marked for message {chat_msg.id} by {self.user.username}")
-                        # Ensure classification and embedding are run before returning
-                        await asyncio.to_thread(classify_new_message, chat_msg.id)
-                        await asyncio.to_thread(embed_new_message, chat_msg.id)
-                        # Reload from DB and check reply_sent before returning
-                        from chat.models import ChatMessage as ChatMessageModel
-                        latest_msg = await sync_to_async(ChatMessageModel.objects.get)(id=chat_msg.id)
-                        if latest_msg.reply_sent:
-                            return
-                    except Exception as e:
-                        print(f"[UserBotManager] [AutoReply] Failed to send reply for message {chat_msg.id} by {self.user.username}: {e}")
-                        logging.exception(f"[AutoReply] Failed to send reply for message {chat_msg.id}: {e}")
+                # Reload from DB to get is_important
+                from chat.models import ChatMessage as ChatMessageModel
+                latest_msg = await sync_to_async(ChatMessageModel.objects.get)(id=chat_msg.id)
+                # If auto_reply is True and message is NOT important, send automatically
+                if auto_reply and not latest_msg.is_important:
+                    # Prevent double send: check reply_sent before sending
+                    if latest_msg.reply_sent:
+                        print(f"[UserBotManager] [AutoReply] Reply already sent for message {latest_msg.id} by {self.user.username}, skipping.")
+                    else:
+                        latest_msg.user_approved_reply = True
+                        latest_msg.score = 100
+                        latest_msg.reply_message = ai_reply
+                        await sync_to_async(latest_msg.save)()
+                        try:
+                            if latest_msg.telegram_chat_id and latest_msg.telegram_message_id:
+                                print(f"[UserBotManager] [AutoReply] Sending reply to chat_id={latest_msg.telegram_chat_id}, message_id={latest_msg.telegram_message_id} for message {latest_msg.id} by {self.user.username}")
+                                await self.client.send_message(
+                                    entity=latest_msg.telegram_chat_id,
+                                    message=latest_msg.reply_message,
+                                    reply_to=latest_msg.telegram_message_id
+                                )
+                            else:
+                                contact = latest_msg.contact
+                                peer = contact.telegram_user_id or contact.telegram_username
+                                if peer is None:
+                                    print(f"[UserBotManager] [AutoReply] WARNING: No valid peer for message {latest_msg.id} by {self.user.username}. Marking as sent and skipping.")
+                                    latest_msg.reply_sent = True
+                                    await sync_to_async(latest_msg.save)()
+                                    return
+                                print(f"[UserBotManager] [AutoReply] Sending fallback reply to {peer} for message {latest_msg.id} by {self.user.username}")
+                                await self.client.send_message(peer, latest_msg.reply_message)
+                            # Set reply_sent immediately after sending
+                            latest_msg.reply_sent = True
+                            await sync_to_async(latest_msg.save)()
+                            print(f"[UserBotManager] [AutoReply] Reply sent and marked for message {latest_msg.id} by {self.user.username}")
+                            # Ensure classification and embedding are run before returning
+                            await asyncio.to_thread(classify_new_message, latest_msg.id)
+                            await asyncio.to_thread(embed_new_message, latest_msg.id)
+                        except Exception as e:
+                            print(f"[UserBotManager] [AutoReply] Failed to send reply for message {latest_msg.id} by {self.user.username}: {e}")
+                            logging.exception(f"[AutoReply] Failed to send reply for message {latest_msg.id}: {e}")
             except Exception as e:
                 print(f"[UserBotManager] Exception in handler for {self.user.username}: {e}")
         self.handler_attached = True
@@ -249,6 +253,10 @@ class TelegramUserBotManager:
                 pending_count = len(pending)
                 print(f"[UserBotManager] Pending messages to reply for {self.user.username}: {pending_count}")
                 for msg in pending:
+                    # Prevent double send: check reply_sent before sending
+                    if msg.reply_sent:
+                        print(f"[UserBotManager] Reply already sent for message {msg.id} by {self.user.username}, skipping.")
+                        continue
                     reply_text = msg.reply_message or msg.ai_generated_message
                     try:
                         if msg.telegram_chat_id and msg.telegram_message_id:
@@ -278,6 +286,7 @@ class TelegramUserBotManager:
                                 await self.client.send_message(entity, reply_text)
                             except Exception as e:
                                 print(f"[UserBotManager] Failed to resolve entity for {peer}: {e}")
+                        # Set reply_sent immediately after sending
                         msg.reply_sent = True
                         await sync_to_async(msg.save)()
                         print(f"[UserBotManager] Reply sent and marked for message {msg.id} by {self.user.username}")
